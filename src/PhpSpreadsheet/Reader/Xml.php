@@ -15,6 +15,7 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Font;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use SimpleXMLElement;
 
 /**
@@ -615,6 +616,35 @@ class Xml extends BaseReader
                             $spreadsheet->getActiveSheet()->getComment($columnID . $rowID)->setAuthor(self::convertStringEncoding($author, $this->charSet))->setText($this->parseRichText($annotation));
                         }
 
+                        if (isset($cell->Image)) {
+                            $imageAttributes = $cell->Image->attributes($namespaces['ss']);
+
+                            $path = $imageAttributes['Path'];
+
+                            if (!file_exists($path)) {
+                                $filename = tempnam(sys_get_temp_dir(), 'xml-image_');
+
+                                $ch = curl_init($path);
+                                $fp = fopen($filename, 'wb');
+                                curl_setopt($ch, CURLOPT_FILE, $fp);
+                                curl_setopt($ch, CURLOPT_HEADER, 0);
+                                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                                curl_exec($ch);
+                                curl_close($ch);
+                                fclose($fp);
+
+                                $path = $filename;
+                            }
+
+                            $drawing = new Drawing();
+                            $drawing->setPath($path);
+                            $drawing->setResizeProportional(1);
+                            $drawing->setWorksheet($spreadsheet->getActiveSheet());
+
+                            $spreadsheet->getActiveSheet()->getCell($columnID . $rowID)->setValueExplicit($drawing, DataType::TYPE_NULL);
+
+                        }
+
                         if (($cellIsSet) && (isset($cell_ss['StyleID']))) {
                             $style = (string) $cell_ss['StyleID'];
                             if ((isset($this->styles[$style])) && (!empty($this->styles[$style]))) {
@@ -769,6 +799,18 @@ class Xml extends BaseReader
 
                         break;
                     case 'Weight':
+                        $weight = (int)(string) $borderStyleValue;
+
+                        $borders = [
+                            Border::BORDER_HAIR,
+                            Border::BORDER_THIN,
+                            Border::BORDER_MEDIUM,
+                            Border::BORDER_THICK,
+                        ];
+
+                        if (isset($borders[$weight])) {
+                            $thisBorder['borderStyle'] = $borders[$weight];
+                        }
                         break;
                     case 'Position':
                         $borderPosition = strtolower($borderStyleValue);
